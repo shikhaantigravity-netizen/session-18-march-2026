@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+import re
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import gspread
@@ -111,7 +112,6 @@ if not st.session_state.quiz_started:
         email = st.text_input("Email Address")
         
         if st.form_submit_button("Start Quiz"):
-            import re
             email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
             
             if name and email and conn is not None:
@@ -132,6 +132,26 @@ if not st.session_state.quiz_started:
             else:
                 st.error("Google Sheets connection is offline.")
 else:
+    # --- Profanity Filter ---
+    BLOCKED_WORDS = {
+        "abuse", "abusive", "ass", "asshole", "bastard", "bitch", "bloody",
+        "bollocks", "bullshit", "crap", "cunt", "damn", "dick", "dumb",
+        "dumbass", "fag", "fuck", "fucking", "goddamn", "hell", "idiot",
+        "jackass", "jerk", "moron", "motherfucker", "nigger", "piss",
+        "prick", "shit", "shitty", "slut", "sob", "stupid", "suck",
+        "trash", "twat", "wanker", "whore", "wtf", "stfu",
+        "retard", "retarded", "loser", "pathetic", "useless", "worst",
+        "hate", "disgusting", "horrible", "terrible", "awful",
+        "chutiya", "madarchod", "behenchod", "bhosdike", "gaandu",
+        "harami", "kamina", "kutta", "saala", "bakchod"
+    }
+
+    def contains_profanity(text):
+        if not text:
+            return False
+        words = re.findall(r'[a-zA-Z]+', text.lower())
+        return any(w in BLOCKED_WORDS for w in words)
+
     with st.form("active_quiz"):
         st.subheader("Answer the Questions")
         unfilled = False
@@ -145,47 +165,41 @@ else:
             st.divider()
         
         rating = st.select_slider("How was this session?", [1,2,3,4,5], value=5)
-        comments = st.text_area("Additional Feedback")
+        comments = st.text_area("Additional Feedback (Optional)")
         
         if st.form_submit_button("Submit Final Answers"):
-            # Profanity Check
-            abusive_words = ["abuse", "badword1", "badword2"] # Extensible list
-            found_abuse = any(word in comments.lower() for word in abusive_words)
-            
             if unfilled:
                 st.error("⚠️ Please answer all questions before submitting.")
-            elif found_abuse:
-                st.error("🚫 Please use respectful language in your feedback.")
+            elif contains_profanity(comments):
+                st.error("🚫 Your feedback contains inappropriate language. Please use respectful words to submit your response.")
             else:
                 score = 0
                 if "questions" in st.session_state and st.session_state.answers:
                     for idx, q in enumerate(st.session_state.questions):
                         if st.session_state.answers.get(idx) == q['correct_answer']:
                             score += 1
-            
-            new_sub = pd.DataFrame([{
-                "name": st.session_state.user_data['name'],
-                "email": st.session_state.user_data['email'],
-                "score": score,
-                "rating": rating,
-                "comments": comments,
-                "ts": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-            }])
-            
-            s_sheet = f"{target_quiz['title']}_SUBS"
-            try:
-                if gc is None:
-                    st.error("GSheets connection offline.")
-                    st.stop()
-                # Direct update for reliability
-                sh = gc.open_by_url(GSHEET_URL)
-                ws = sh.worksheet(s_sheet)
-                ws.append_row(new_sub.values.tolist()[0])
                 
-                st.balloons()
-                st.success(f"🎊 Submitted! Your Score: {score}/5. Thank you for participating!")
-                # Reset for next person or next try if allowed
-                for key in ["quiz_started", "user_data", "questions", "answers"]:
-                    if key in st.session_state: del st.session_state[key]
-            except Exception as e:
-                st.error(f"Failed to save results: {e}")
+                new_sub = pd.DataFrame([{
+                    "name": st.session_state.user_data['name'],
+                    "email": st.session_state.user_data['email'],
+                    "score": score,
+                    "rating": rating,
+                    "comments": comments,
+                    "ts": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+                }])
+                
+                s_sheet = f"{target_quiz['title']}_SUBS"
+                try:
+                    if gc is None:
+                        st.error("GSheets connection offline.")
+                        st.stop()
+                    sh = gc.open_by_url(GSHEET_URL)
+                    ws = sh.worksheet(s_sheet)
+                    ws.append_row(new_sub.values.tolist()[0])
+                    
+                    st.balloons()
+                    st.success(f"🎊 Submitted! Your Score: {score}/5. Thank you for participating!")
+                    for key in ["quiz_started", "user_data", "questions", "answers"]:
+                        if key in st.session_state: del st.session_state[key]
+                except Exception as e:
+                    st.error(f"Failed to save results: {e}")
