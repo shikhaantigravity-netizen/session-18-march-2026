@@ -54,17 +54,23 @@ except Exception as e:
 # Helper: Get Registry
 @st.cache_data(ttl=1)
 def get_registry():
-    if conn is None or gc is None: return pd.DataFrame()
+    cols = ["id", "title", "status", "created_at"]
+    if conn is None or gc is None or not GSHEET_URL: 
+        return pd.DataFrame(columns=cols)
     try:
         sh = gc.open_by_url(GSHEET_URL)
         ws = sh.worksheet("Registry")
-        return pd.DataFrame(ws.get_all_records())
+        df = pd.DataFrame(ws.get_all_records())
+        if df.empty:
+            return pd.DataFrame(columns=cols)
+        return df
     except Exception as e:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=cols)
 
 # Routing Logic
-query_params = st.query_params
-target_quiz_id = query_params.get("quiz")
+target_quiz_id = st.query_params.get("quiz")
+if isinstance(target_quiz_id, list): 
+    target_quiz_id = target_quiz_id[0]
 
 if not target_quiz_id:
     st.warning("📭 Please use the link provided by your presenter to join a quiz.")
@@ -130,9 +136,10 @@ else:
         
         if st.form_submit_button("Submit Final Answers"):
             score = 0
-            for idx, q in enumerate(st.session_state.questions):
-                if st.session_state.answers.get(idx) == q['correct_answer']:
-                    score += 1
+            if "questions" in st.session_state and st.session_state.answers:
+                for idx, q in enumerate(st.session_state.questions):
+                    if st.session_state.answers.get(idx) == q['correct_answer']:
+                        score += 1
             
             new_sub = pd.DataFrame([{
                 "name": st.session_state.user_data['name'],
