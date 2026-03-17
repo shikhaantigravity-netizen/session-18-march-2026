@@ -2,4 +2,7 @@ streamlit
 openai
 pymupdf
 python-pptx
+python-docx
 pandas
+st-gsheets-connection
+gspread
