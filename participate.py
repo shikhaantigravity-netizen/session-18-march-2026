@@ -48,6 +48,7 @@ try:
     gc = gspread.service_account_from_dict(gs_creds) if gs_creds else None
 except Exception as e:
     st.error(f"❌ Connection Error: {e}")
+    st.info("💡 Make sure your Streamlit Secrets contain the [connections.gsheets] section and GSHEET_URL.")
     conn = None
     gc = None
 
@@ -79,7 +80,8 @@ if not target_quiz_id:
 # Load Quiz Data
 registry = get_registry()
 if registry.empty:
-    st.error("❌ Registry not found or empty.")
+    st.error("❌ Registry not found or database is empty.")
+    st.info("💡 The presenter needs to generate and activate at least one quiz first.")
     st.stop()
 
 target_quiz = registry[registry['title'] == target_quiz_id]
