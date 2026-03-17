@@ -109,17 +109,24 @@ if not st.session_state.quiz_started:
         st.subheader("Join the Quiz")
         name = st.text_input("Full Name")
         email = st.text_input("Email Address")
+        
         if st.form_submit_button("Start Quiz"):
+            import re
+            email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            
             if name and email and conn is not None:
-                st.session_state.user_data = {"name": name, "email": email}
-                try:
-                    qs_df = conn.read(spreadsheet=GSHEET_URL, worksheet=f"{target_quiz['title']}_QS", ttl=0)
-                    indices = random.sample(range(len(qs_df)), min(5, len(qs_df)))
-                    st.session_state.questions = qs_df.iloc[indices].to_dict('records')
-                    st.session_state.quiz_started = True
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to load questions: {e}")
+                if not re.match(email_regex, email):
+                    st.error("❌ Please enter a valid email address.")
+                else:
+                    st.session_state.user_data = {"name": name, "email": email}
+                    try:
+                        qs_df = conn.read(spreadsheet=GSHEET_URL, worksheet=f"{target_quiz['title']}_QS", ttl=0)
+                        indices = random.sample(range(len(qs_df)), min(5, len(qs_df)))
+                        st.session_state.questions = qs_df.iloc[indices].to_dict('records')
+                        st.session_state.quiz_started = True
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to load questions: {e}")
             elif not name or not email:
                 st.error("Please fill in both name and email.")
             else:
@@ -127,21 +134,34 @@ if not st.session_state.quiz_started:
 else:
     with st.form("active_quiz"):
         st.subheader("Answer the Questions")
+        unfilled = False
         for idx, q in enumerate(st.session_state.questions):
             st.markdown(f"**Q{idx+1}:** {q['text']}")
             opts = str(q['options']).split("|")
-            st.session_state.answers[idx] = st.radio("choice", opts, key=f"ans_{idx}", label_visibility="collapsed")
+            # index=None forces user to select
+            st.session_state.answers[idx] = st.radio("choice", opts, key=f"ans_{idx}", label_visibility="collapsed", index=None)
+            if st.session_state.answers.get(idx) is None:
+                unfilled = True
             st.divider()
         
         rating = st.select_slider("How was this session?", [1,2,3,4,5], value=5)
         comments = st.text_area("Additional Feedback")
         
         if st.form_submit_button("Submit Final Answers"):
-            score = 0
-            if "questions" in st.session_state and st.session_state.answers:
-                for idx, q in enumerate(st.session_state.questions):
-                    if st.session_state.answers.get(idx) == q['correct_answer']:
-                        score += 1
+            # Profanity Check
+            abusive_words = ["abuse", "badword1", "badword2"] # Extensible list
+            found_abuse = any(word in comments.lower() for word in abusive_words)
+            
+            if unfilled:
+                st.error("⚠️ Please answer all questions before submitting.")
+            elif found_abuse:
+                st.error("🚫 Please use respectful language in your feedback.")
+            else:
+                score = 0
+                if "questions" in st.session_state and st.session_state.answers:
+                    for idx, q in enumerate(st.session_state.questions):
+                        if st.session_state.answers.get(idx) == q['correct_answer']:
+                            score += 1
             
             new_sub = pd.DataFrame([{
                 "name": st.session_state.user_data['name'],
